@@ -4,4 +4,4 @@ scipy
 numpy
 streamlit-keyup
 matplot
-matplotlib
+sklearn
