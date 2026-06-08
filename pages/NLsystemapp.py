@@ -25,6 +25,9 @@ with col_calc:
     # Caixa de texto padrão do Streamlit (múltiplas linhas)
     calc_texto = st.text_area("Entrada da Calculadora (Aperte Ctrl+Enter para processar):", height=200, key="calc_input")
     
+    # --- NOVO: Controle de casas decimais específico para os valores calculados ---
+    casas_calc = st.number_input("Casas Decimais (Calculadora):", min_value=0, max_value=15, value=6, step=1, key="casas_calc")
+    
     st.subheader("Valores Calculados:")
     
     resultados_calc = []
@@ -51,10 +54,10 @@ with col_calc:
                         resultados_calc.append("Erro: Falta variável")
                     else:
                         val = float(expr.evalf())
-                        constantes_calculadora[var_nome] = val # Guarda na memória
+                        constantes_calculadora[var_nome] = val # Guarda na memória em precisão total
                         
-                        str_val = f"{val:.6f}".rstrip('0').rstrip('.')
-                        if str_val == "": str_val = "0"
+                        # Aplica a quantidade de casas decimais escolhida pelo usuário
+                        str_val = f"{val:.{casas_calc}f}"
                         resultados_calc.append(f"{var_nome} = {str_val}")
                 else:
                     expr = sp.sympify(linha_limpa).subs(constantes_calculadora)
@@ -62,8 +65,7 @@ with col_calc:
                         resultados_calc.append("Erro: Falta variável")
                     else:
                         val = float(expr.evalf())
-                        str_val = f"{val:.6f}".rstrip('0').rstrip('.')
-                        if str_val == "": str_val = "0"
+                        str_val = f"{val:.{casas_calc}f}"
                         resultados_calc.append(str_val)
             except Exception:
                 resultados_calc.append("...")
@@ -103,7 +105,7 @@ with col_solver:
             
             for linha in linhas:
                 if "=" in linha:
-                    lado_esq, lado_dir = linha.split("=", 1)
+                    lado_esq, lado_dir = merge = linha.split("=", 1)
                     expr = sp.sympify(lado_esq) - sp.sympify(lado_dir)
                 else:
                     expr = sp.sympify(linha)
@@ -130,12 +132,10 @@ with col_solver:
                     
                 chute_inicial = np.full(num_vars, 0.1) 
                 
-                # --- CORREÇÃO 1: Permite chegar ao zero absoluto ---
                 limite_inferior = np.full(num_vars, 0.0) 
                 limites = (limite_inferior, np.inf)
                 
                 with st.spinner("Calculando sistema..."):
-                    # Forçamos uma tolerância matemática altíssima (1e-10) para o cálculo
                     resultado = least_squares(
                         sistema_para_scipy, 
                         chute_inicial, 
@@ -143,14 +143,20 @@ with col_solver:
                         ftol=1e-10, xtol=1e-10, gtol=1e-10
                     )
                     
-                    # --- CORREÇÃO 2: Verificação rígida do resíduo ---
-                    # resultado.fun contém o valor final de cada equação. Deve ser muito próximo de zero.
                     erro_maximo = np.max(np.abs(resultado.fun))
                     
-                    # Só consideramos sucesso se a pior equação tiver um erro menor que 0.00001
                     if resultado.success and erro_maximo < 1e-5:
                         st.success("Sistema quadrado válido! Convergência alcançada.")
-                        resultado_texto = "\n".join([f"{simb.name} = {(valor * mult):.{casas}f}" for simb, valor in zip(simbolos, resultado.x)])
+                        
+                        # --- NOVO: Lógica de exibição da tag do multiplicador ---
+                        if mult != 1.0:
+                            # Limpa formatações feias como 1000.0000 para ficar apenas 1000
+                            mult_limpo = f"{mult:.4f}".rstrip('0').rstrip('.')
+                            suffix = f" (x{mult_limpo})"
+                        else:
+                            suffix = ""
+                            
+                        resultado_texto = "\n".join([f"{simb.name} = {(valor * mult):.{casas}f}{suffix}" for simb, valor in zip(simbolos, resultado.x)])
                         st.code(resultado_texto, language="text")
                     else:
                         st.error("Sem convergência real (Raízes negativas/complexas ou erro matemático).")
