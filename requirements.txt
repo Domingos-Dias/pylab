@@ -3,3 +3,5 @@ sympy
 scipy
 numpy
 streamlit-keyup
+matplot
+matplotlib
