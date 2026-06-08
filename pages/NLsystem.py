@@ -86,6 +86,7 @@ with col_solver:
     with col_cfg2:
         casas = st.number_input("Casas Decimais:", min_value=0, max_value=15, value=5, step=1)
     with col_cfg3:
+        # NOVO: Controle sobre a tolerância de rejeição de erros do algoritmo
         tol_erro = st.number_input("Tolerância (Erro):", value=0.00001, format="%.5f")
         
     st.subheader("Resultados:")
@@ -127,38 +128,35 @@ with col_solver:
                 limite_inferior = np.full(num_vars, 0.0) 
                 limites = (limite_inferior, np.inf)
                 
+                # --- NOVO: Estratégia Multi-Start para fugir de gradientes planos ---
                 chutes_para_testar = [0.1, 1.0, 0.01, 2.0, 5.0]
                 sucesso_real = False
                 resultado_final = None
                 melhor_erro_encontrado = float('inf')
                 
-                # Resgata a precisão máxima que a máquina aguenta (~2.22e-16)
-                precisao_maquina = np.finfo(float).eps
-                
                 with st.spinner("Calculando sistema..."):
                     for chute_base in chutes_para_testar:
                         chute_inicial = np.full(num_vars, chute_base)
-                        
                         resultado = least_squares(
                             sistema_para_scipy, 
                             chute_inicial, 
                             bounds=limites,
-                            ftol=precisao_maquina,  # Força a checagem no limite do float64
-                            xtol=precisao_maquina,
-                            gtol=precisao_maquina,
-                            max_nfev=10000          # Aumenta a paciência do algoritmo de 100 para 10000 passos
+                            ftol=1e-10, xtol=1e-10, gtol=1e-10
                         )
                         
                         erro_maximo = np.max(np.abs(resultado.fun))
                         
+                        # Guarda o menor erro caso todas as tentativas falhem
                         if erro_maximo < melhor_erro_encontrado:
                             melhor_erro_encontrado = erro_maximo
                             resultado_final = resultado
                         
+                        # Se achou uma solução que respeita a nossa tolerância, interrompe a busca!
                         if resultado.success and erro_maximo <= tol_erro:
                             sucesso_real = True
                             break
                     
+                    # Exibição dos resultados baseada na estratégia acima
                     if sucesso_real:
                         st.success("Sistema quadrado válido! Convergência alcançada.")
                         
@@ -168,10 +166,7 @@ with col_solver:
                         else:
                             suffix = ""
                             
-                        # Limpa pequenos resíduos visuais (se o número for menor que 1e-10, arredonda visualmente para 0)
-                        raizes_limpas = [0.0 if np.abs(v) < 1e-10 else v for v in resultado_final.x]
-                            
-                        resultado_texto = "\n".join([f"{simb.name} = {(valor * mult):.{casas}f}{suffix}" for simb, valor in zip(simbolos, raizes_limpas)])
+                        resultado_texto = "\n".join([f"{simb.name} = {(valor * mult):.{casas}f}{suffix}" for simb, valor in zip(simbolos, resultado_final.x)])
                         st.code(resultado_texto, language="text")
                     else:
                         st.error(f"Sem convergência. Menor erro residual atingido: {melhor_erro_encontrado:.5f}")
