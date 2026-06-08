@@ -22,7 +22,7 @@ with col_calc:
     st.header("🧮 Memória & Calculadora")
     st.caption("Crie constantes (ex: `k1 = 5*2`) ou faça contas isoladas.")
     
-    # Voltamos para o text_area para permitir múltiplas linhas!
+    # Caixa de texto padrão do Streamlit (múltiplas linhas)
     calc_texto = st.text_area("Entrada da Calculadora (Aperte Ctrl+Enter para processar):", height=200, key="calc_input")
     
     st.subheader("Valores Calculados:")
@@ -80,13 +80,12 @@ with col_solver:
     st.header("⚙️ Solver Principal")
     st.caption("Digite as equações (uma por linha). O sistema aceita `=` diretamente!")
     
-    # Voltamos para o text_area aqui também!
+    # Caixa de texto padrão do Streamlit
     eq_texto = st.text_area("Equações do Sistema (Aperte Ctrl+Enter para processar):", height=200, key="eq_input")
     
     # Painel de Configurações
     col_cfg1, col_cfg2 = st.columns(2)
     with col_cfg1:
-        # Lembre-se: Use o clique duplo para selecionar o número rapidamente!
         mult = st.number_input("Multiplicador do Resultado:", value=1.0, format="%.4f")
     with col_cfg2:
         casas = st.number_input("Casas Decimais:", min_value=0, max_value=15, value=5, step=1)
@@ -124,27 +123,37 @@ with col_solver:
             elif num_eqs != num_vars:
                 st.warning(f"Sistema não resolvível ({num_eqs} eq, {num_vars} incógnitas). Precisa ser quadrado.")
             else:
-                # Motor Numérico
                 func_numerica = sp.lambdify(simbolos, expressoes, "numpy")
                 
                 def sistema_para_scipy(valores_vars):
                     return func_numerica(*valores_vars)
                     
                 chute_inicial = np.full(num_vars, 0.1) 
-                limite_inferior = np.full(num_vars, 1e-5) 
+                
+                # --- CORREÇÃO 1: Permite chegar ao zero absoluto ---
+                limite_inferior = np.full(num_vars, 0.0) 
                 limites = (limite_inferior, np.inf)
                 
-                # Barra de carregamento do Streamlit
                 with st.spinner("Calculando sistema..."):
-                    resultado = least_squares(sistema_para_scipy, chute_inicial, bounds=limites)
+                    # Forçamos uma tolerância matemática altíssima (1e-10) para o cálculo
+                    resultado = least_squares(
+                        sistema_para_scipy, 
+                        chute_inicial, 
+                        bounds=limites,
+                        ftol=1e-10, xtol=1e-10, gtol=1e-10
+                    )
                     
-                    if resultado.success:
+                    # --- CORREÇÃO 2: Verificação rígida do resíduo ---
+                    # resultado.fun contém o valor final de cada equação. Deve ser muito próximo de zero.
+                    erro_maximo = np.max(np.abs(resultado.fun))
+                    
+                    # Só consideramos sucesso se a pior equação tiver um erro menor que 0.00001
+                    if resultado.success and erro_maximo < 1e-5:
                         st.success("Sistema quadrado válido! Convergência alcançada.")
                         resultado_texto = "\n".join([f"{simb.name} = {(valor * mult):.{casas}f}" for simb, valor in zip(simbolos, resultado.x)])
-                        # Exibe o resultado final com botão de copiar automático
                         st.code(resultado_texto, language="text")
                     else:
-                        st.error("Sem convergência real (Limites excedidos ou erro matemático).")
+                        st.error("Sem convergência real (Raízes negativas/complexas ou erro matemático).")
                         
         except Exception as e:
             st.info("Digitando... (aguardando sintaxe válida)")
