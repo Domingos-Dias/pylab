@@ -9,10 +9,9 @@ st.set_page_config(page_title="Solver Não Linear", page_icon="⚙️", layout="
 st.title("⚙️ Solver Reativo de Sistemas Não Lineares")
 st.markdown("Resolva sistemas complexos e armazene variáveis na memória da calculadora.")
 
-# Dicionário de memória (passará os valores da direita para a esquerda)
 constantes_calculadora = {}
 
-# 2. Layout em Colunas (No PC ficam lado a lado, no Celular ficam empilhadas)
+# 2. Layout em Colunas 
 col_solver, col_calc = st.columns(2)
 
 # ==========================================
@@ -22,10 +21,8 @@ with col_calc:
     st.header("🧮 Memória & Calculadora")
     st.caption("Crie constantes (ex: `k1 = 5*2`) ou faça contas isoladas.")
     
-    # Caixa de texto padrão do Streamlit (múltiplas linhas)
     calc_texto = st.text_area("Entrada da Calculadora (Aperte Ctrl+Enter para processar):", height=200, key="calc_input")
     
-    # --- NOVO: Controle de casas decimais específico para os valores calculados ---
     casas_calc = st.number_input("Casas Decimais (Calculadora):", min_value=0, max_value=15, value=6, step=1, key="casas_calc")
     
     st.subheader("Valores Calculados:")
@@ -54,9 +51,8 @@ with col_calc:
                         resultados_calc.append("Erro: Falta variável")
                     else:
                         val = float(expr.evalf())
-                        constantes_calculadora[var_nome] = val # Guarda na memória em precisão total
+                        constantes_calculadora[var_nome] = val 
                         
-                        # Aplica a quantidade de casas decimais escolhida pelo usuário
                         str_val = f"{val:.{casas_calc}f}"
                         resultados_calc.append(f"{var_nome} = {str_val}")
                 else:
@@ -70,7 +66,6 @@ with col_calc:
             except Exception:
                 resultados_calc.append("...")
                 
-        # Exibe em um bloco copiável nativo
         st.code("\n".join(resultados_calc), language="text")
     else:
         st.code("--", language="text")
@@ -82,15 +77,17 @@ with col_solver:
     st.header("⚙️ Solver Principal")
     st.caption("Digite as equações (uma por linha). O sistema aceita `=` diretamente!")
     
-    # Caixa de texto padrão do Streamlit
     eq_texto = st.text_area("Equações do Sistema (Aperte Ctrl+Enter para processar):", height=200, key="eq_input")
     
-    # Painel de Configurações
-    col_cfg1, col_cfg2 = st.columns(2)
+    # Painel de Configurações Expandido
+    col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
     with col_cfg1:
-        mult = st.number_input("Multiplicador do Resultado:", value=1.0, format="%.4f")
+        mult = st.number_input("Multiplicador:", value=1.0, format="%.4f")
     with col_cfg2:
         casas = st.number_input("Casas Decimais:", min_value=0, max_value=15, value=5, step=1)
+    with col_cfg3:
+        # NOVO: Controle sobre a tolerância de rejeição de erros do algoritmo
+        tol_erro = st.number_input("Tolerância (Erro):", value=0.00001, format="%.5f")
         
     st.subheader("Resultados:")
     
@@ -105,14 +102,12 @@ with col_solver:
             
             for linha in linhas:
                 if "=" in linha:
-                    lado_esq, lado_dir = merge = linha.split("=", 1)
+                    lado_esq, lado_dir = linha.split("=", 1)
                     expr = sp.sympify(lado_esq) - sp.sympify(lado_dir)
                 else:
                     expr = sp.sympify(linha)
                     
-                # Substitui as constantes da calculadora
                 expr = expr.subs(constantes_calculadora)
-                
                 expressoes.append(expr)
                 simbolos_set.update(expr.free_symbols)
                 
@@ -130,36 +125,52 @@ with col_solver:
                 def sistema_para_scipy(valores_vars):
                     return func_numerica(*valores_vars)
                     
-                chute_inicial = np.full(num_vars, 0.1) 
-                
                 limite_inferior = np.full(num_vars, 0.0) 
                 limites = (limite_inferior, np.inf)
                 
+                # --- NOVO: Estratégia Multi-Start para fugir de gradientes planos ---
+                chutes_para_testar = [0.1, 1.0, 0.01, 2.0, 5.0]
+                sucesso_real = False
+                resultado_final = None
+                melhor_erro_encontrado = float('inf')
+                
                 with st.spinner("Calculando sistema..."):
-                    resultado = least_squares(
-                        sistema_para_scipy, 
-                        chute_inicial, 
-                        bounds=limites,
-                        ftol=1e-10, xtol=1e-10, gtol=1e-10
-                    )
+                    for chute_base in chutes_para_testar:
+                        chute_inicial = np.full(num_vars, chute_base)
+                        resultado = least_squares(
+                            sistema_para_scipy, 
+                            chute_inicial, 
+                            bounds=limites,
+                            ftol=1e-10, xtol=1e-10, gtol=1e-10
+                        )
+                        
+                        erro_maximo = np.max(np.abs(resultado.fun))
+                        
+                        # Guarda o menor erro caso todas as tentativas falhem
+                        if erro_maximo < melhor_erro_encontrado:
+                            melhor_erro_encontrado = erro_maximo
+                            resultado_final = resultado
+                        
+                        # Se achou uma solução que respeita a nossa tolerância, interrompe a busca!
+                        if resultado.success and erro_maximo <= tol_erro:
+                            sucesso_real = True
+                            break
                     
-                    erro_maximo = np.max(np.abs(resultado.fun))
-                    
-                    if resultado.success and erro_maximo < 1e-5:
+                    # Exibição dos resultados baseada na estratégia acima
+                    if sucesso_real:
                         st.success("Sistema quadrado válido! Convergência alcançada.")
                         
-                        # --- NOVO: Lógica de exibição da tag do multiplicador ---
                         if mult != 1.0:
-                            # Limpa formatações feias como 1000.0000 para ficar apenas 1000
                             mult_limpo = f"{mult:.4f}".rstrip('0').rstrip('.')
                             suffix = f" (x{mult_limpo})"
                         else:
                             suffix = ""
                             
-                        resultado_texto = "\n".join([f"{simb.name} = {(valor * mult):.{casas}f}{suffix}" for simb, valor in zip(simbolos, resultado.x)])
+                        resultado_texto = "\n".join([f"{simb.name} = {(valor * mult):.{casas}f}{suffix}" for simb, valor in zip(simbolos, resultado_final.x)])
                         st.code(resultado_texto, language="text")
                     else:
-                        st.error("Sem convergência real (Raízes negativas/complexas ou erro matemático).")
+                        st.error(f"Sem convergência. Menor erro residual atingido: {melhor_erro_encontrado:.5f}")
+                        st.caption("Dica: Tente aumentar um pouco a Tolerância (Erro) ou verifique se as raízes são reais e positivas.")
                         
         except Exception as e:
             st.info("Digitando... (aguardando sintaxe válida)")
