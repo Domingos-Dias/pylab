@@ -2,7 +2,6 @@ import streamlit as st
 import sympy as sp
 import numpy as np
 from scipy.optimize import least_squares
-from st_keyup import st_keyup
 
 # 1. Configuração inicial da página web
 st.set_page_config(page_title="Solver Não Linear", page_icon="⚙️", layout="wide")
@@ -17,15 +16,14 @@ constantes_calculadora = {}
 col_solver, col_calc = st.columns(2)
 
 # ==========================================
-# PAINEL DIREITO (CALCULADORA) - Calculado primeiro para gerar as constantes
+# PAINEL DIREITO (CALCULADORA)
 # ==========================================
 with col_calc:
     st.header("🧮 Memória & Calculadora")
     st.caption("Crie constantes (ex: `k1 = 5*2`) ou faça contas isoladas.")
     
-    # Caixa de texto nativa da web
-# Usando o st_keyup com um 'debounce' de 500 milissegundos (meio segundo)
-    calc_texto = st_keyup("Entrada da Calculadora:", key="calc_input", debounce=500)
+    # Voltamos para o text_area para permitir múltiplas linhas!
+    calc_texto = st.text_area("Entrada da Calculadora (Aperte Ctrl+Enter para processar):", height=200, key="calc_input")
     
     st.subheader("Valores Calculados:")
     
@@ -82,11 +80,13 @@ with col_solver:
     st.header("⚙️ Solver Principal")
     st.caption("Digite as equações (uma por linha). O sistema aceita `=` diretamente!")
     
-    eq_texto = st_keyup("Equações do Sistema:", key="eq_input", debounce=500)
+    # Voltamos para o text_area aqui também!
+    eq_texto = st.text_area("Equações do Sistema (Aperte Ctrl+Enter para processar):", height=200, key="eq_input")
     
     # Painel de Configurações
     col_cfg1, col_cfg2 = st.columns(2)
     with col_cfg1:
+        # Lembre-se: Use o clique duplo para selecionar o número rapidamente!
         mult = st.number_input("Multiplicador do Resultado:", value=1.0, format="%.4f")
     with col_cfg2:
         casas = st.number_input("Casas Decimais:", min_value=0, max_value=15, value=5, step=1)
