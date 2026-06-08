@@ -2,7 +2,6 @@ streamlit
 sympy
 scipy
 numpy
-streamlit-keyup
-matplot
+pandas
 matplotlib
-sklearn
+scikit-learn
